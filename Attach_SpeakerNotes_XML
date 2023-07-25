@@ -1,0 +1,96 @@
+Option Explicit
+
+Sub Attach_SpeakerNotes_XML()
+    ' Add references to Microsoft ActiveX Data Objects Library and Microsoft XML, v6.0
+    ' Go to Tools -> References to include these
+
+    Dim oFile As Object
+    Dim oFSO As Object
+    Dim sXMLDir As String, sTXTDir As String
+    Dim sXMLFile As String, sSlideName As String
+    Dim sTXTFile As String, sSpeakerNote As String
+    Dim sTarget As String, sMedia As String
+    Dim xmlDoc As MSXML2.DOMDocument60
+    Dim xmlNodeList As MSXML2.IXMLDOMNodeList
+    Dim xmlNode As MSXML2.IXMLDOMNode
+    Dim oPPT As PowerPoint.Presentation
+    Dim oSlide As PowerPoint.Slide
+
+    ' Set PowerPoint presentation
+    Set oPPT = ActivePresentation
+
+    ' Create File System Object
+    Set oFSO = CreateObject("Scripting.FileSystemObject")
+
+    ' Get the XML directory
+    sXMLDir = InputBox("Enter XML Directory Path:", "XML Directory")
+
+    ' Get the TXT directory
+    sTXTDir = InputBox("Enter TXT Directory Path:", "TXT Directory")
+
+    sXMLFile = Dir(sXMLDir & "\*.xml.rels")
+
+    Do While Len(sXMLFile) > 0
+        Debug.Print "Processing: " & sXMLFile
+        ' Parse XML
+        Set xmlDoc = New MSXML2.DOMDocument60
+        xmlDoc.async = False: xmlDoc.validateOnParse = False
+        xmlDoc.Load (sXMLDir & "\" & sXMLFile)
+
+        ' Extract media file name
+        Set xmlNodeList = xmlDoc.SelectNodes("//@Target")
+        For Each xmlNode In xmlNodeList
+            sTarget = xmlNode.text
+            If InStr(sTarget, ".m4a") > 0 Then
+                sMedia = Mid(sTarget, InStrRev(sTarget, "/") + 1)
+                sMedia = Replace(sMedia, ".m4a", ".txt")
+
+                ' Read TXT file
+                sTXTFile = sTXTDir & "\" & sMedia
+                If oFSO.FileExists(sTXTFile) Then
+                    Debug.Print "Found TXT file: " & sTXTFile
+                    sSpeakerNote = ReadTextFile(sTXTFile)
+                    Debug.Print "Speaker Note: " & sSpeakerNote ' This line prints the speaker note
+                Else
+                    Debug.Print "TXT file not found: " & sTXTFile
+                End If
+
+                ' Extract slide number from XML filename
+                sSlideName = Replace(sXMLFile, "slide", "")
+                sSlideName = Replace(sSlideName, ".xml.rels", "")
+
+                ' Insert speaker note to the corresponding slide
+                If IsNumeric(sSlideName) And CInt(sSlideName) <= oPPT.Slides.Count Then
+                    Debug.Print "Adding notes to slide: " & sSlideName
+                    Set oSlide = oPPT.Slides(CInt(sSlideName))
+                    oSlide.NotesPage.Shapes.Placeholders(2).TextFrame.TextRange.text = sSpeakerNote
+                Else
+                    Debug.Print "Invalid slide number: " & sSlideName
+                End If
+            End If
+        Next xmlNode
+
+        ' Get next XML file
+        sXMLFile = Dir
+    Loop
+    Debug.Print "Finished processing."
+End Sub
+
+Function ReadTextFile(sFile As String) As String
+    ' Function to read the UTF-8 text file using ADODB.Stream
+
+    Dim adoStream As ADODB.stream
+    Set adoStream = New ADODB.stream
+
+    With adoStream
+        .Type = adTypeText
+        .Charset = "UTF-8"
+        .Open
+        .LoadFromFile sFile
+        ReadTextFile = .ReadText
+        .Close
+    End With
+
+    Set adoStream = Nothing
+End Function
+
